@@ -1,0 +1,2 @@
+linear, 784, 128, relu
+linear, 128, 10, sigmoid
