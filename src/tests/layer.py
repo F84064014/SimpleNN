@@ -13,14 +13,16 @@ class TestInstance(unittest.TestCase):
 		x = np.random.random((100, 10))
 		dense = _Layer.Dense(10,10,"sigmoid")
 		weight = dense.getw()
+		bias = dense.getb()
 		self.assertEqual(weight.shape, (10,10))
 
 		x_dense = dense.forward(x)
-		x = x.dot(weight)
+		x = x.dot(weight) + bias
+		x = 1 / (1 + np.exp(-x))
 
 		for i in range(100):
 			for j in range(10):
-				self.assertAlmostEqual(x[i, j]+1, x_dense[i, j])
+				self.assertAlmostEqual(x[i, j], x_dense[i, j])
 
 
 	def test_relu(self):
@@ -38,7 +40,8 @@ class TestInstance(unittest.TestCase):
 		x = np.random.random((100, 10))
 		sigmoid = _Layer.Sigmoid()
 		
-		x_sigmoid = sigmoid.forward(x)
+		x_sigmoid = x.copy()
+		sigmoid.forward(x_sigmoid)
 		x = 1/(1+np.exp(-x))
 
 		for i in range(100):

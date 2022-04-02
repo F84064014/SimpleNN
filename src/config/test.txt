@@ -1,0 +1,3 @@
+linear, 10, 10
+linear, 10, 2
+CrossEntropy
