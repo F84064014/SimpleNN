@@ -73,13 +73,14 @@ RowMatrixXd sum_row(Eigen::Ref<RowMatrixXd> mat){
  *  [0,0,0,0,1],
  *  [0,0,1,0,0],]
 */
-RowMatrixXd onehot_matrix(Eigen::Ref<RowMatrixXd> mat){
+RowMatrixXd onehot_matrix(Eigen::Ref<RowMatrixXd> mat, int dim){
 	
-	RowMatrixXd ret(mat.rows(), int(mat.maxCoeff()));
+	RowMatrixXd ret(mat.rows(), dim);
 	ret.setZero();
 	for (size_t i=0; i<mat.rows(); ++i)
-		mat(i, int(mat(i,0))) = 1;
-	
+	{
+		ret(i, int(mat(i,0))) = 1.0;
+	}
 	return ret;
 }
 
@@ -145,11 +146,14 @@ public:
 
 	RowMatrixXd cal_grad(Eigen::Ref<RowMatrixXd> y_out, Eigen::Ref<RowMatrixXd> y_true)
 	{
-		// (n, 1) -> (n, p)
-		RowMatrixXd onehot_y_true = onehot_matrix(y_true);
+		// from 0 to max(y_true)
+		int dim = (int) (y_true.maxCoeff())+1;
 		
-		RowMatrixXd softmax = cal_softmax(y_out);
+		// (n, 1) -> (n, p)
+		RowMatrixXd onehot_y_true = onehot_matrix(y_true, dim);
 
+		RowMatrixXd softmax = cal_softmax(y_out);
+		
 		return (softmax - onehot_y_true) / y_out.rows();
 	}
 };
