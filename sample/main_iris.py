@@ -31,4 +31,4 @@ if __name__ == "__main__":
 	model = FNN(config)
 	model.summary()
 	
-	model.fit(X_train, y_train, X_valid, y_valid, epochs=3, lr=0.1)
+	model.fit(X_train, y_train, X_valid, y_valid, epochs=300, lr=0.1)

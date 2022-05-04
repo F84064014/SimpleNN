@@ -24,14 +24,11 @@ class FNN():
                 raise RuntimeError("unknow activation function used")
 
         def forward(self, x):
-            print(self._weight)
             self._out = x.dot(self._weight) + self._biases
             return self._activate.forward(self._out)
 
         def backward(self, x_input, grad_output):
             
-            print(self._out)
-            print(self._activate.df_dx(self._out))
             grad_output = grad_output * self._activate.df_dx(self._out)
             grad_input = np.dot(grad_output, self._weight.T)
             # grad_input = (self._weight.dot(grad_output.T)).T
@@ -211,7 +208,6 @@ class FNN():
             self.backward(y, targets)
 
             category=np.argmax(y,axis=1)
-            print(category) # test########
             train_loss = self.softmax_crossentropy_with_logits(y, y_train).sum()
 
             train_accuracy = (category == y_train).mean()
@@ -220,7 +216,7 @@ class FNN():
 
             # calculate how many time an epoch take
             # note only train time are take into account
-            epoch_time = time.time() - start_time
+            epoch_time = (time.time() - start_time) * 1000 # milisecond
 
             # validate part
             if valid_flag: 
@@ -230,9 +226,9 @@ class FNN():
                 valid_accuracy = (category == y_valid).mean()
                 self._log['valid_acc'].append(valid_accuracy)
                 self._log['valid_loss'].append(valid_loss)
-                print(f'epoch {epoch+1}/{epochs} | train accuracy: {train_accuracy:.2f} | valid accuracy: {valid_accuracy:.2f}\ntrain loss: {train_loss:.3f} | valid loss: {valid_loss:.3f} | epoch time {epoch_time:.2f}')
+                print(f'epoch {epoch+1}/{epochs} | train accuracy: {train_accuracy:.2f} | valid accuracy: {valid_accuracy:.2f}\ntrain loss: {train_loss:.3f} | valid loss: {valid_loss:.3f} | epoch time {epoch_time:.2f} ms')
             else:
-                print(f'epoch {epoch+1}/{epochs} | train accuracy: {train_accuracy:.2f} | trian loss: {train_loss:.3f} | epoch time {epoch_time:.2f}')
+                print(f'epoch {epoch+1}/{epochs} | train accuracy: {train_accuracy:.2f} | trian loss: {train_loss:.3f} | epoch time {epoch_time:.2f} ms')
             print('_'*70)
 
         best_train_epoch = np.argmax(self._log['train_acc'])
