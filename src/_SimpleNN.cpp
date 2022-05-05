@@ -12,6 +12,7 @@
 
 #include "Layer.h"
 #include "Loss.h"
+#include "Timer.hpp"
 
 namespace py = pybind11;
 
@@ -101,9 +102,12 @@ public:
 protected:
 
 	bool m_trainFlag;
-	std::list<Layer*> m_layers;
-	std::list<RowMatrixXd> m_layer_inputs;
+	//std::list<Layer*> m_layers;
+	std::vector<Layer*> m_layers; //better or not??
+	//std::list<RowMatrixXd> m_layer_inputs;
+	std::vector<RowMatrixXd> m_layer_inputs; //better or not??
 	LossFunc* m_lossfunc;
+	std::string m_linesplitter = std::string(70, '_');
 };
 
 /*
@@ -151,7 +155,7 @@ FNN::FNN(std::string config_str)
 RowMatrixXd FNN::forward(const Eigen::Ref<RowMatrixXd> x, bool set_train = true)
 {
 	// copy x, dont know if there is better way
-	RowMatrixXd _x(2,2);
+	RowMatrixXd _x;
 	_x = x;
 	
 	// record layer inputs for updating parameter
@@ -192,11 +196,14 @@ void FNN::fit(
 	std::cout << "training set size: " << X_train.rows() << std::endl;
 	std::cout << "testing set size: " << X_valid.rows() << std::endl;
 
+	Timer timer;
+	double epoch_duration;
 
+	py::print(m_linesplitter);
 	for (size_t epoch=0; epoch<epochs; ++epoch)
 	{
 
-		//TODO necessary initialization
+		timer.start();
 		m_layer_inputs.clear();
 
 		RowMatrixXd y_out = forward(X_train);
@@ -207,12 +214,28 @@ void FNN::fit(
 		RowMatrixXd y_out_flat = flatten_output(y_out);
 		double train_acc = getAccuracy(y_out_flat, y_train);
 
+		epoch_duration = timer.end();
+
 		py::print("epoch", epoch+1, "/", epochs);
-		//TODO add eooch time
 		train_acc = round(train_acc * 100) / 100.0;
 		train_loss = round(train_loss * 1000) / 1000.0;
-		py::print("train accuracy", train_acc, "| train loss:", train_loss, "| epoch time:");
+		py::print("train accuracy", train_acc, "| train loss:", train_loss, "| epoch time:", epoch_duration, "ms");
+
+		// test part
+		RowMatrixXd y_out_valid = forward(X_valid, false);
+		double valid_loss = getLoss(y_out_valid, y_valid);
+		RowMatrixXd y_out_flat_valid = flatten_output(y_out_valid);
+		double valid_acc = getAccuracy(y_out_flat_valid, y_valid);
+
+		valid_acc = round(valid_acc * 100) / 100.0;
+		valid_loss = round(valid_loss * 1000) / 1000.0;
+		py::print("valid accuracy", valid_acc, "| valid loss:", valid_loss, "| epoch time:");
+		py::print(m_linesplitter);
+
 	}
+
+	double average_time = round(timer.get_average_time() * 1000) / 1000.0;
+	py::print("average time cost for training", average_time, "ms");
 
 }
 
@@ -228,6 +251,7 @@ void FNN::fit(
 	double lr = 1e-1
 )
 {
+
 	py::print("taining set size", X_train.rows());
 	py::print("testing = None");
 
@@ -237,10 +261,14 @@ void FNN::fit(
 
 	//TODO add a dimension check here for X_train.cols() and m_layers[0].rows()
 
+	Timer timer;
+	double epoch_duration;
+
+	py::print(m_linesplitter);
 	for (size_t epoch=0; epoch<epochs; ++epoch)
 	{
 
-		//TODO necessary initialization
+		timer.start();
 		m_layer_inputs.clear();
 		
 		RowMatrixXd y_out = forward(X_train);
@@ -251,11 +279,13 @@ void FNN::fit(
 		RowMatrixXd y_out_flat = flatten_output(y_out);
 		double train_acc = getAccuracy(y_out_flat, y_train);
 
+		epoch_duration = timer.end();
+
 		py::print("epoch", epoch+1, "/", epochs);
-		//TODO add eooch time
 		train_acc = round(train_acc * 100) / 100.0;
 		train_loss = round(train_loss * 1000) / 1000.0;
-		py::print("train accuracy", train_acc, "| train loss:", train_loss, "| epoch time:");
+		py::print("train accuracy", train_acc, "| train loss:", train_loss, "| epoch time:", epoch_duration, "ms");
+		py::print(m_linesplitter);
 	}
 
 }

@@ -92,7 +92,7 @@ RowMatrixXd cal_softmax(Eigen::Ref<RowMatrixXd> mat){
 	
 	RowMatrixXd ret = RowMatrixXd(mat.rows(), mat.cols());
 
-	RowMatrixXd temp = expm(mat);
+	RowMatrixXd temp = mat.unaryExpr([](double x){return exp(x);});
 	
 	RowMatrixXd temp_rowsum = sum_row(temp);
 
