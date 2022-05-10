@@ -25,8 +25,8 @@ if __name__ == "__main__":
 
     X_train = X_train.astype(np.float64)
     X_valid = X_valid.astype(np.float64)
-    y_train = y_train.astype(np.float64).reshape(-1, 1)
-    y_valid = y_valid.astype(np.float64).reshape(-1, 1)
+    y_train = y_train.astype(np.float64)
+    y_valid = y_valid.astype(np.float64)
 
     print(X_train.shape)
 	

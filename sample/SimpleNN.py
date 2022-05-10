@@ -106,9 +106,48 @@ class FNN():
         def __str__(self) -> str:
             return "ReLu"
 
+    class CrossEntropyLoss:
+
+        def __init__(self) -> None:
+            pass
+
+        def get_grad(self, y_out, y_true):
+
+            # Compute crossentropy gradient from logits[batch,n_classes] and ids of correct answers
+            onehot_answers = np.zeros_like(y_out)
+            onehot_answers[np.arange(len(y_out)), y_true.astype(np.int32)] = 1
+            
+            softmax = np.exp(y_out) / np.exp(y_out).sum(axis=-1,keepdims=True)
+
+            return (- onehot_answers + softmax) / y_out.shape[0]
+        
+        def get_loss(self, y_out, y_true):
+            prob_answers = y_out[np.arange(len(y_out)),y_true.astype(np.int32)]
+            xentropy = - prob_answers + np.log(np.sum(np.exp(y_out),axis=-1))
+        
+            return xentropy.sum()
+
+        def __str__(self) -> str:
+            return "CrossEntropyLoss"
+
+    class MSELoss:
+
+        def __init__(self) -> None:
+            pass
+
+        def get_grad(self):
+            pass
+
+        def get_loss(self):
+            pass
+
+        def __str__(self) -> str:
+            return "MSELoss"
+
     def __init__(self, layers_config) -> None:
         
         self.layers = []
+        self.loss_func = None
 
         # build layers
         for layer in layers_config.split('\n'):
@@ -130,6 +169,14 @@ class FNN():
 
                 self.layers.append(self.Dense(input_size=input_size, output_size=output_size, activation=activation))
 
+            # cross entropy loss
+            elif layer_list[0] == 'CrossEntropy':
+                self.loss_func = self.CrossEntropyLoss()
+
+            # MSE loss
+            elif layer_list[0] == 'MSELoss':
+                self.loss_func = self.CrossEntropyLoss()
+
         # gradients
         self.grads = None
 
@@ -150,7 +197,6 @@ class FNN():
 
         for layer in self.layers:
             pass
-
 
     def _reset_log(self) -> None:
         self._log['train_acc'] = list()
@@ -180,7 +226,7 @@ class FNN():
 
 
         # loss = self.softmax_crossentropy_with_logits(out, targets)
-        loss_grad = self.grad_softmax_crossentropy_with_logits(out, targets)
+        loss_grad = self.loss_func.get_grad(out, targets)
         # loss_grad = 2*(out-targets)/out.shape[0]
 
         for layer_index in reversed(range(len(self.layers))):
@@ -192,11 +238,13 @@ class FNN():
         self._train = True
         self._lr = lr
         self._reset_log()
+        training_time = 0
 
         if isinstance(X_valid, pd.DataFrame) or isinstance(X_valid, np.ndarray):
             valid_flag = True
 
-        targets =  np.apply_along_axis(lambda a: np.array([0 if i != a else 1 for i in range(int(max(y_train))+1)]), 1, y_train.reshape((y_train.shape[0], 1)))
+        #targets =  np.apply_along_axis(lambda a: np.array([0 if i != a else 1 for i in range(int(max(y_train))+1)]), 1, y_train.reshape((y_train.shape[0], 1)))
+        targets = y_train.copy()
 
         # train for n epoch
         for epoch in range(epochs):
@@ -208,7 +256,7 @@ class FNN():
             self.backward(y, targets)
 
             category=np.argmax(y,axis=1)
-            train_loss = self.softmax_crossentropy_with_logits(y, y_train).sum()
+            train_loss = self.loss_func.get_loss(y, y_train)
 
             train_accuracy = (category == y_train).mean()
             self._log['train_acc'].append(train_accuracy)
@@ -217,12 +265,13 @@ class FNN():
             # calculate how many time an epoch take
             # note only train time are take into account
             epoch_time = (time.time() - start_time) * 1000 # milisecond
+            training_time += epoch_time
 
             # validate part
             if valid_flag: 
                 y = self.forward(X_valid)
                 category = np.argmax(y, axis=1)
-                valid_loss = self.softmax_crossentropy_with_logits(y, y_valid).sum()
+                valid_loss = self.loss_func.get_loss(y, y_valid)
                 valid_accuracy = (category == y_valid).mean()
                 self._log['valid_acc'].append(valid_accuracy)
                 self._log['valid_loss'].append(valid_loss)
@@ -240,8 +289,7 @@ class FNN():
             best_valid_acc = self._log['valid_acc'][best_valid_epoch]
             best_valid_loss = self._log['valid_loss'][best_valid_epoch]
             print(f'best valid acc: {best_valid_acc:.2f}, loss = {best_valid_loss:.3f}')
-
-
+        print(f'average training time {training_time/epochs:.3f}')
 
     def softmax_crossentropy_with_logits(self,logits,reference_answers):
         # Compute crossentropy from logits[batch,n_classes] and ids of correct answers
