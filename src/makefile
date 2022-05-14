@@ -5,9 +5,10 @@ PY = /usr/include/python3.8
 NAME = _SimpleNN`python3-config --extension-suffix`
 TESTDIR = ./tests
 SAMPLEDIR = ./sample
+MKL = -I /usr/include/mkl -L /usr/lib/x86_64-linux-gnu/mkl -lmkl_rt
 
 all:
-	$(CXX) -O3 -fopenmp -shared -std=c++14 -fPIC ${pybindpkg} _SimpleNN.cpp -o ${NAME} -I${PY}
+	$(CXX) -O3 -march=native -fopenmp -shared -std=c++14 -fPIC ${pybindpkg} _SimpleNN.cpp -o ${NAME} -I${PY} ${MKL}
 	
 FNN:	
 	$(CXX) -shared -std=c++14 -fPIC ${pybindpkg} _SimpleNN.cpp -o _SimpleNN`python3-config --extension-suffix` -I /usr/include/python3.8
@@ -44,6 +45,17 @@ handwrite:
 	cp ${SAMPLEDIR}/handwrite.py ./handwrite.py
 	python3 handwrite.py
 	rm handwrite.py
+
+reg:
+	cp ${SAMPLEDIR}/regression.py ./regression.py
+	python3 regression.py
+	rm regression.py
+
+diabetes:
+	cp ${SAMPLEDIR}/diabetes.py ./diabetes.py
+	python3 diabetes.py
+	rm diabetes.py
+	
 
 clean:
 	rm -f *.so *.out *.txt

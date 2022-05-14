@@ -1,3 +1,6 @@
+//#define EIGEN_USE_MKL_ALL
+//#define EIGEN_VECTORIZE_SSE4_2
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -10,14 +13,15 @@
 #include <pybind11/eigen.h>
 #include <pybind11/operators.h>
 
-#include "Layer.h"
-#include "Loss.h"
+#include "Layer.hpp"
+#include "Loss.hpp"
 #include "Timer.hpp"
 
 namespace py = pybind11;
 
 // set Eigen Matrix row major (default column major)
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+using VectorXd = Eigen::VectorXd;
 
 /*
  * som string operation
@@ -50,9 +54,9 @@ const std::string & trim(std::string &s)
 /*
  * flatten an n*p probability value to a nd vector
 */
-RowMatrixXd flatten_output(const Eigen::Ref<RowMatrixXd> y)
+VectorXd flatten_output(const Eigen::Ref<RowMatrixXd> y)
 {
-	RowMatrixXd ret = RowMatrixXd(y.rows(), 1);
+	VectorXd ret = VectorXd(y.rows());
 	for (size_t i=0; i<y.rows(); ++i)
 	{
 		size_t max_of_col = 0;
@@ -61,7 +65,7 @@ RowMatrixXd flatten_output(const Eigen::Ref<RowMatrixXd> y)
 			if (y(i, j) > y(i, max_of_col))
 				max_of_col = j;
 		}
-		ret(i, 0) = max_of_col;
+		ret(i) = max_of_col;
 	}
 	return ret;
 }
@@ -78,33 +82,31 @@ public:
 	RowMatrixXd forward(const Eigen::Ref<RowMatrixXd>, bool set_train);
 	void fit(
 		Eigen::Ref<RowMatrixXd> X_train,
-		Eigen::Ref<RowMatrixXd> y_train,
+		Eigen::Ref<VectorXd> y_train,
 		Eigen::Ref<RowMatrixXd> X_valid,
-		Eigen::Ref<RowMatrixXd> y_valid,
+		Eigen::Ref<VectorXd> y_valid,
 		size_t epochs, 
 		double lr //learning rate
 	);
 	void fit(
 		Eigen::Ref<RowMatrixXd> X_train,
-		Eigen::Ref<RowMatrixXd> y_train,
+		Eigen::Ref<VectorXd>,
 		size_t epochs, 
 		double lr //learning rate
 	);
 	RowMatrixXd evaluate(const Eigen::Ref<RowMatrixXd> X);
-	double getLoss(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true);
-	RowMatrixXd getGrad(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true);
-	double getAccuracy(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true);
+	double getLoss(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<VectorXd> y_true);
+	RowMatrixXd getGrad(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<VectorXd> y_true);
+	double getAccuracy(const Eigen::Ref<VectorXd> y_out, const Eigen::Ref<VectorXd> y_true);
 	void summary();
 	void save(std::string);
 	void load(std::string);
-	void backward(const Eigen::Ref<RowMatrixXd>, const Eigen::Ref<RowMatrixXd>);
+	void backward(const Eigen::Ref<RowMatrixXd>, const Eigen::Ref<VectorXd>);
 
 protected:
 
 	bool m_trainFlag;
-	//std::list<Layer*> m_layers;
 	std::vector<Layer*> m_layers; //better or not??
-	//std::list<RowMatrixXd> m_layer_inputs;
 	std::vector<RowMatrixXd> m_layer_inputs; //better or not??
 	LossFunc* m_lossfunc;
 	std::string m_linesplitter = std::string(70, '_');
@@ -146,6 +148,10 @@ FNN::FNN(std::string config_str)
 		{
 			m_lossfunc = new CrossEntropyLoss();
 		}
+		else if (config_unit_vec.at(0) == "MSE")
+		{
+			m_lossfunc = new MSELoss();
+		}
 	}
 }
 
@@ -155,8 +161,7 @@ FNN::FNN(std::string config_str)
 RowMatrixXd FNN::forward(const Eigen::Ref<RowMatrixXd> x, bool set_train = true)
 {
 	// copy x, dont know if there is better way
-	RowMatrixXd _x;
-	_x = x;
+	RowMatrixXd _x(x);
 	
 	// record layer inputs for updating parameter
 	if (set_train == true)
@@ -186,15 +191,18 @@ RowMatrixXd FNN::forward(const Eigen::Ref<RowMatrixXd> x, bool set_train = true)
 */
 void FNN::fit(
 	Eigen::Ref<RowMatrixXd> X_train,
-	Eigen::Ref<RowMatrixXd> y_train,
+	Eigen::Ref<VectorXd> y_train,
 	Eigen::Ref<RowMatrixXd> X_valid,
-	Eigen::Ref<RowMatrixXd> y_valid,
+	Eigen::Ref<VectorXd> y_valid,
 	size_t epochs = 100,
 	double lr = 1e-1
 )
 {
 	std::cout << "training set size: " << X_train.rows() << std::endl;
 	std::cout << "testing set size: " << X_valid.rows() << std::endl;
+
+	for (Layer* layer: m_layers)
+		layer->set_lr(lr);
 
 	Timer timer;
 	double epoch_duration;
@@ -211,7 +219,7 @@ void FNN::fit(
 		double train_loss = getLoss(y_out, y_train);
 		backward(y_out, y_train);
 
-		RowMatrixXd y_out_flat = flatten_output(y_out);
+		VectorXd y_out_flat = flatten_output(y_out);
 		double train_acc = getAccuracy(y_out_flat, y_train);
 
 		epoch_duration = timer.end();
@@ -221,15 +229,15 @@ void FNN::fit(
 		train_loss = round(train_loss * 1000) / 1000.0;
 		py::print("train accuracy", train_acc, "| train loss:", train_loss, "| epoch time:", epoch_duration, "ms");
 
-		// test part
+		// validation part
 		RowMatrixXd y_out_valid = forward(X_valid, false);
 		double valid_loss = getLoss(y_out_valid, y_valid);
-		RowMatrixXd y_out_flat_valid = flatten_output(y_out_valid);
+		VectorXd y_out_flat_valid = flatten_output(y_out_valid);
 		double valid_acc = getAccuracy(y_out_flat_valid, y_valid);
 
 		valid_acc = round(valid_acc * 100) / 100.0;
 		valid_loss = round(valid_loss * 1000) / 1000.0;
-		py::print("valid accuracy", valid_acc, "| valid loss:", valid_loss, "| epoch time:");
+		py::print("valid accuracy", valid_acc, "| valid loss:", valid_loss);
 		py::print(m_linesplitter);
 
 	}
@@ -246,7 +254,7 @@ void FNN::fit(
 */
 void FNN::fit(
 	Eigen::Ref<RowMatrixXd> X_train,
-	Eigen::Ref<RowMatrixXd> y_train,
+	Eigen::Ref<VectorXd> y_train,
 	size_t epochs = 100,
 	double lr = 1e-1
 )
@@ -276,7 +284,7 @@ void FNN::fit(
 		double train_loss = getLoss(y_out, y_train);
 		backward(y_out, y_train);
 
-		RowMatrixXd y_out_flat = flatten_output(y_out);
+		VectorXd y_out_flat = flatten_output(y_out);
 		double train_acc = getAccuracy(y_out_flat, y_train);
 
 		epoch_duration = timer.end();
@@ -301,7 +309,7 @@ RowMatrixXd FNN::evaluate(const Eigen::Ref<RowMatrixXd> x)
 /*
  * calculate loss
 */
-double FNN::getLoss(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true)
+double FNN::getLoss(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<VectorXd> y_true)
 {
 
 	return m_lossfunc->cal_loss(y_out, y_true);
@@ -309,8 +317,9 @@ double FNN::getLoss(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMat
 
 /*
  * calculate gradient from loss
+ * y_out is a loss probability matrix with dim = n * num_class
 */
-RowMatrixXd FNN::getGrad(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true)
+RowMatrixXd FNN::getGrad(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<VectorXd> y_true)
 {
 	return m_lossfunc->cal_grad(y_out, y_true);
 }
@@ -318,18 +327,16 @@ RowMatrixXd FNN::getGrad(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<R
 /*
  * calculate accuracy (classification
 */
-double FNN::getAccuracy(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true)
+double FNN::getAccuracy(const Eigen::Ref<VectorXd> y_out, const Eigen::Ref<VectorXd> y_true)
 {
-	if (y_out.cols() != 1 || y_true.cols() != 1)
-		throw "expect input vector but got matrix";
-	
-	if (y_out.rows() != y_true.rows())
-		throw "inconsistent size of y_out and y_true";
+
+	if (y_out.size() != y_true.size())
+		throw "incompitable size for output and label";
 
 	unsigned int correct_cnt = 0;
 	for (size_t i=0; i<y_out.rows(); ++i)
 	{
-		if ((int)y_out(i, 0) == (int)y_true(i, 0))
+		if ((int)y_out(i) == (int)y_true(i))
 			correct_cnt += 1;
 	}
 
@@ -339,7 +346,7 @@ double FNN::getAccuracy(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<Ro
 /*
  * backward proporgation
 */
-void FNN::backward(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<RowMatrixXd> y_true)
+void FNN::backward(const Eigen::Ref<RowMatrixXd> y_out, const Eigen::Ref<VectorXd> y_true)
 {
 	RowMatrixXd loss_grad = m_lossfunc->cal_grad(y_out, y_true);
 
@@ -388,7 +395,7 @@ PYBIND11_MODULE(_SimpleNN, m) {
 
     py::class_<FNN>(m, "FNN")	
 		.def(py::init<std::string>())
-		.def("fit", py::overload_cast<Eigen::Ref<RowMatrixXd>, Eigen::Ref<RowMatrixXd>, Eigen::Ref<RowMatrixXd>, Eigen::Ref<RowMatrixXd>, size_t, double>(& FNN::fit),
+		.def("fit", py::overload_cast<Eigen::Ref<RowMatrixXd>, Eigen::Ref<VectorXd>, Eigen::Ref<RowMatrixXd>, Eigen::Ref<VectorXd>, size_t, double>(& FNN::fit),
 			py::arg("X_train"),
 			py::arg("y_train"),
 			py::arg("X_valid") = py::none(),
@@ -396,7 +403,7 @@ PYBIND11_MODULE(_SimpleNN, m) {
 			py::arg("epochs") = 100,
 			py::arg("lr") = 1e-2
 		)
-		.def("fit", py::overload_cast<Eigen::Ref<RowMatrixXd>, Eigen::Ref<RowMatrixXd>, size_t, double>(& FNN::fit),
+		.def("fit", py::overload_cast<Eigen::Ref<RowMatrixXd>, Eigen::Ref<VectorXd>, size_t, double>(& FNN::fit),
 			py::arg("X_train"),
 			py::arg("y_train"),
 			py::arg("epochs") = 100,

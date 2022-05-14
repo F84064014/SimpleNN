@@ -2,18 +2,18 @@ from _SimpleNN import FNN
 from sklearn import datasets
 import numpy as np
 
-config = '''linear, 4, 128, relu
+config = '''linear, 10, 128, relu
 linear, 128, 256, relu
-linear, 256, 3, sigmoid
-CrossEntropy'''
+linear, 256, 1
+MSE'''
 
 if __name__ == "__main__":
 
 
-    iris = datasets.load_iris()
+    diabetes = datasets.load_diabetes()
 
-    X = iris.data
-    y = iris.target
+    X = diabetes.data
+    y = diabetes.target
 
     n = len(X)
     random_index = np.arange(n)
@@ -28,8 +28,10 @@ if __name__ == "__main__":
     y_train = y_train.astype(np.float64)
     y_valid = y_valid.astype(np.float64)
 
+    print(X.shape)
+
     model = FNN(config)
     model.summary()
 
-    model.fit(X_train, y_train, X_valid, y_valid, epochs=300, lr=0.1)
+    model.fit(X_train, y_train, X_valid, y_valid, epochs=500, lr=0.000005)
     #model.fit(X_train, y_train, epochs=3, lr=0.1)

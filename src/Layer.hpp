@@ -13,21 +13,17 @@
 
 // set Eigen Matrix row major (default column major)
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+using VectorXd = Eigen::VectorXd;
 
 namespace py = pybind11;
 
 // sum matrix by row
-Eigen::Ref<RowMatrixXd> sum_by_row(Eigen::Ref<RowMatrixXd> x)
+VectorXd sum_by_row(Eigen::Ref<RowMatrixXd> x)
 {
-	RowMatrixXd ret(x.cols(), 1);
+	VectorXd ret(x.cols());
 	for (size_t j=0; j<x.cols(); ++j)
 	{
-		double col_sum = 0;
-		for (size_t i=0; i<x.rows(); ++i)
-		{
-			col_sum += x(i, j);
-		}
-		ret(j, 0) = col_sum;
+		ret(j) = x.col(j).sum();
 	}
 	return ret;
 }
@@ -35,7 +31,7 @@ Eigen::Ref<RowMatrixXd> sum_by_row(Eigen::Ref<RowMatrixXd> x)
 /*
  * bitwise mulitplication
 */
-Eigen::Ref<RowMatrixXd> bitwise_mul(Eigen::Ref<RowMatrixXd> m1, Eigen::Ref<RowMatrixXd> m2)
+Eigen::Ref<RowMatrixXd> bitwise_mul(const Eigen::Ref<RowMatrixXd> m1, const Eigen::Ref<RowMatrixXd> m2)
 {
 
 	if ( (m1.rows() != m2.rows()) || (m1.cols() != m2.cols()) )
@@ -57,7 +53,7 @@ class Activation{
 public:
     //virtual RowMatrixXd forward(Eigen::Ref<RowMatrixXd>) = 0;
     virtual void forward(Eigen::Ref<RowMatrixXd>) = 0;
-    virtual Eigen::Ref<RowMatrixXd> backward(Eigen::Ref<RowMatrixXd>) = 0;
+    virtual RowMatrixXd backward(const Eigen::Ref<RowMatrixXd>) = 0;
     virtual std::string toString() = 0;
 };
 
@@ -72,8 +68,8 @@ public:
 	Eigen::VectorXd m_bias;
 	Activation * m_activation;
     
-	virtual RowMatrixXd forward(RowMatrixXd) = 0;
-    virtual RowMatrixXd backward(RowMatrixXd, RowMatrixXd) = 0;
+	virtual RowMatrixXd forward(const Eigen::Ref<RowMatrixXd>) = 0;
+    virtual RowMatrixXd backward(const Eigen::Ref<RowMatrixXd>, const Eigen::Ref<RowMatrixXd>) = 0;
 	virtual std::string toString() = 0;
 	virtual const RowMatrixXd & getWeight() = 0;
 	virtual const Eigen::VectorXd & getBias() = 0;
@@ -91,7 +87,10 @@ public:
 
 	void forward(Eigen::Ref<RowMatrixXd> x) {}
 
-	Eigen::Ref<RowMatrixXd> backward(Eigen::Ref<RowMatrixXd> x){return x;}
+	RowMatrixXd backward(const Eigen::Ref<RowMatrixXd> x)
+	{
+		return x;
+	}
 	
 	std::string toString(){ return "N";}
 
@@ -116,7 +115,7 @@ public:
 					x(i, j) = 0;
 	}
 
-	Eigen::Ref<RowMatrixXd> backward(Eigen::Ref<RowMatrixXd> x)
+	RowMatrixXd backward(const Eigen::Ref<RowMatrixXd> x)
 	{
 		RowMatrixXd ret(x.rows(), x.cols());
 		for (size_t i=0; i<x.rows(); ++i)
@@ -159,13 +158,15 @@ public:
 		x = x.unaryExpr([](double x){return 1/(1+exp(-x));});
 	}
 
-	Eigen::Ref<RowMatrixXd> backward(Eigen::Ref<RowMatrixXd> x)
+	RowMatrixXd backward(const Eigen::Ref<RowMatrixXd> x)
 	{
+		/*
 		RowMatrixXd ret(x.rows(), x.cols());
 		for (size_t i=0; i<x.rows(); ++i)
 			for (size_t j=0; j<x.cols(); ++j)
 				ret(i, j) = ( exp(-x(i,j)) / pow((1+exp(-x(i, j))), 2) );
-		return ret;
+		return ret;*/
+		return x.unaryExpr([](double x){return exp(-x) / ((1+exp(-x)) * (1+exp(-x)));});
 	}
 
 	std::string toString()
@@ -196,7 +197,7 @@ public:
 	
 
 	Dense(size_t input_dim, size_t output_dim, std::string activation, double learning_rate = 0.1, int seed=0)
-	{	
+	{
 		// set correct size
 		m_weight.resize(input_dim, output_dim);
 
@@ -228,7 +229,7 @@ public:
 
 	}
 
-	RowMatrixXd forward(RowMatrixXd x)
+	RowMatrixXd forward(const Eigen::Ref<RowMatrixXd> x)
 	{
 		RowMatrixXd ret = x * m_weight;
 		ret.rowwise() += m_bias.transpose();
@@ -247,19 +248,24 @@ public:
 		return sstm.str();
 	}
 
-	RowMatrixXd backward(RowMatrixXd x_input, RowMatrixXd grad_output)
+	RowMatrixXd backward(const Eigen::Ref<RowMatrixXd> x_input, const Eigen::Ref<RowMatrixXd> grad_output)
 	{
 
+		//py::print("m_out", m_out.transpose());//test
 		RowMatrixXd temp = m_activate->backward(m_out);
+		//py::print("temp", temp.transpose());//test
 		temp = bitwise_mul(grad_output, temp);
 		RowMatrixXd grad_input = temp * m_weight.transpose();
+		//py::print("x_input", x_input.transpose());//test
+		//py::print("grad_out", grad_output.transpose());//test
 
 		RowMatrixXd grad_weight = (x_input.transpose() * temp);
-		//m_weight = m_weight - m_lr * grad_weight;
+		//py::print("grad_w",grad_weight);//test
+		//py::print("weight before", m_weight);//test
 		m_weight.noalias() -= m_lr * grad_weight;
+		//py::print("weight after", m_weight);//test
 
-		RowMatrixXd grad_bias = sum_by_row(temp);// * x_input.rows();
-		//m_bias = m_bias - m_lr * grad_bias
+		VectorXd grad_bias = sum_by_row(temp);// * x_input.rows();
 		m_bias.noalias() -= m_lr * grad_bias;
 
 		return grad_input;
